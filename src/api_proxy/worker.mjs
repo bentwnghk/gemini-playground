@@ -375,11 +375,20 @@ const transformCandidates = (key, cand) => ({
 const transformCandidatesMessage = transformCandidates.bind(null, "message");
 const transformCandidatesDelta = transformCandidates.bind(null, "delta");
 
-const transformUsage = (data) => ({
-  completion_tokens: data.candidatesTokenCount,
-  prompt_tokens: data.promptTokenCount,
-  total_tokens: data.totalTokenCount
-});
+const transformUsage = (data) => {
+  const usage = {
+    completion_tokens: data.candidatesTokenCount,
+    prompt_tokens: data.promptTokenCount,
+    total_tokens: data.totalTokenCount,
+  };
+  if (Array.isArray(data.candidatesTokensDetails)) {
+    const img = data.candidatesTokensDetails.find(d => d.modality === "IMAGE");
+    if (img) {
+      usage.completion_tokens_details = { image_tokens: img.tokenCount };
+    }
+  }
+  return usage;
+};
 
 const processCompletionsResponse = (data, model, id) => {
   return JSON.stringify({
