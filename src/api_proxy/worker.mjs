@@ -142,6 +142,10 @@ async function handleEmbeddings (req, apiKey) {
 }
 
 const DEFAULT_MODEL = "gemini-1.5-pro-latest";
+
+const IMAGE_MODEL_PATTERNS = ["image"];
+const isImageModel = (model) =>
+  model && IMAGE_MODEL_PATTERNS.some(p => model.includes(p));
 async function handleCompletions (req, apiKey) {
   let model = DEFAULT_MODEL;
   switch(true) {
@@ -157,10 +161,14 @@ async function handleCompletions (req, apiKey) {
   const TASK = req.stream ? "streamGenerateContent" : "generateContent";
   let url = `${BASE_URL}/${API_VERSION}/models/${model}:${TASK}`;
   if (req.stream) { url += "?alt=sse"; }
+  const reqBody = await transformRequest(req);
+  if (isImageModel(model)) {
+    reqBody.generationConfig.responseModalities = ["TEXT", "IMAGE"];
+  }
   const response = await fetch(url, {
     method: "POST",
     headers: makeHeaders(apiKey, { "Content-Type": "application/json" }),
-    body: JSON.stringify(await transformRequest(req)), // try
+    body: JSON.stringify(reqBody),
   });
 
   let body = response.body;
@@ -350,11 +358,17 @@ const reasonsMap = { //https://ai.google.dev/api/rest/v1/GenerateContentResponse
   // :"function_call",
 };
 const SEP = "\n\n|>";
+const transformPartContent = (p) => {
+  if (p.text !== undefined) return p.text;
+  if (p.inlineData) return `data:${p.inlineData.mimeType};base64,${p.inlineData.data}`;
+  return "";
+};
+
 const transformCandidates = (key, cand) => ({
   index: cand.index || 0, // 0-index is absent in new -002 models response
   [key]: {
     role: "assistant",
-    content: cand.content?.parts.map(p => p.text).join(SEP) },
+    content: cand.content?.parts.map(transformPartContent).filter(Boolean).join(SEP) || null },
   logprobs: null,
   finish_reason: reasonsMap[cand.finishReason] || cand.finishReason,
 });
